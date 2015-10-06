@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 2.8)
+project( process )
+find_package( OpenCV REQUIRED )
+add_executable( process process.cpp )
+target_link_libraries( process ${OpenCV_LIBS} )
+target_compile_features(process PRIVATE cxx_generalized_initializers)
