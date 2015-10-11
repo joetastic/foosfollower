@@ -1,7 +1,9 @@
+#include <sstream>
 #include <stdio.h>
 #include <opencv2/opencv.hpp>
 #include <opencv2/highgui/highgui.hpp>
 
+using namespace std;
 using namespace cv;
 
 const float FIELD_CORNERS[8] = {
@@ -15,7 +17,6 @@ void find_ball_threshold(Mat& frame, Mat& mask) {
   Mat hsv;
   cvtColor(frame, hsv, COLOR_BGR2YCrCb);
   inRange(hsv, Scalar(0, 140, 110), Scalar(187, 197, 124), mask);
-  rectangle(mask, Point(250, 257), Point(372, 324), Scalar(0), -1);
 }
 
 Mat get_board_mtx(Mat& frame, Mat& mtx) {
@@ -57,30 +58,62 @@ Rect match_template(Mat& mask) {
 int main(int argc, char** argv) {
   VideoCapture cap("../Horton_Beine vs. Atha_Loffredo at the 2014 Tornado Worlds.mp4");
   if(!cap.isOpened()) return -1;
-  cap.set(CV_CAP_PROP_POS_FRAMES, 1830);
+  int frameNumber = 1860;
+  int delay = 0;
+  stringstream matchString;
+  Point previousMatch, velocity, previousVelocity, acceleration;
+  cap.set(CV_CAP_PROP_POS_FRAMES, frameNumber);
 
   namedWindow("image");
-  moveWindow("image", 0, 0);
+  moveWindow("image", 0, 200);
 
   for(;;) {
     Mat frame, mask, mtx, mtxi, board;
-    std::vector<Point2f> t;
-    cap >> frame;
+    vector<Point2f> t;
+    cap >> frame; frameNumber++;
+    get_board_mtx(frame, mtx);
+    invert(mtx, mtxi);
 
     draw_board(frame, board);
     find_ball_threshold(board, mask);
     Rect match = match_template(mask);
-    rectangle(board, match, Scalar(255), 1);
-    get_board_mtx(frame, mtx);
-    invert(mtx, mtxi);
-    perspectiveTransform(
-      (std::vector<Point2f>){match.tl(), match.br()},
-      t, mtxi);
-    rectangle(frame, Rect(t.at(0), t.at(1)), Scalar(255), 1);
 
+    acceleration = velocity - previousVelocity;
+    velocity = previousMatch - match.tl();
+    if (norm(velocity) > 100) {
+      cout << "too much acc, drawing another square\n";
+      perspectiveTransform(
+        (vector<Point2f>){
+          previousMatch + previousVelocity,
+            previousMatch + previousVelocity + Point(22, 22)
+            },
+        t, mtxi);
+      rectangle(frame, Rect(t.at(0), t.at(1)), Scalar(0, 255, 0), 1);
+      previousVelocity = velocity;
+      previousMatch = match.tl();
+      continue;
+    }
+    previousVelocity = velocity;
+    previousMatch = match.tl();
+
+    matchString.str("");
+    matchString << norm(velocity) << " " << norm(acceleration) ;
+    putText(frame, matchString.str(), Point(0, 15), FONT_HERSHEY_PLAIN, 1.0, Scalar(0, 0, 255));
+
+    perspectiveTransform(
+      (vector<Point2f>){match.tl(), match.br()},
+      t, mtxi);
+    rectangle(frame, Rect(t.at(0), t.at(1)), Scalar(255, 0, 0), 1);
 
     imshow("image", frame);
-    waitKey(0);
+    int key = waitKey(delay);
+    if (key == 127) {
+      frameNumber = 1860;
+      cap.set(CV_CAP_PROP_POS_FRAMES, frameNumber);
+    } else if (key > -1) {
+      delay = !delay;
+      cout << key << " " << frameNumber << "\n";
+    }
   }
 
   return 0;
